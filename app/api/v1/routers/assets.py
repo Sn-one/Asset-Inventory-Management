@@ -43,3 +43,11 @@ def update_asset_status(asset_id: int, payload: AssetStatusUpdate) -> AssetRead:
     updated = asset.model_copy(update={"status": payload.status})
     _ASSETS[asset_id] = updated
     return updated
+from fastapi import APIRouter
+
+router = APIRouter()
+
+
+@router.get("")
+def list_assets() -> dict[str, list]:
+    return {"items": []}

@@ -197,3 +197,118 @@ alembic/
 6. Add assignment and stock transaction endpoints with validations.
 7. Add audit log middleware/service for write operations.
 8. Add pytest setup and baseline CI pipeline.
+
+
+## 11) Execution Schedule (Build One Part at a Time)
+
+Use this schedule to implement the MVP in strict order, completing and validating each part before starting the next.
+
+### Part 0 — Kickoff & Environment (Day 1)
+**Goal:** Make the project runnable for everyone.
+- Confirm Python version and dependency management approach.
+- Add `.env.example` and local/dev settings.
+- Standardize `requirements.txt` and startup command.
+- Verify base app boots and health endpoint responds.
+
+**Exit criteria**
+- `uvicorn app.main:app --reload` runs without errors.
+- `GET /health` returns 200.
+
+### Part 1 — Database Foundation (Days 2–3)
+**Goal:** Establish persistent data model and migrations.
+- Configure SQLAlchemy session handling.
+- Add core models: users, roles, user_roles, locations, departments.
+- Initialize Alembic and create first migration.
+
+**Exit criteria**
+- Fresh database can be created from migrations only.
+- Basic model creation/query smoke test passes.
+
+### Part 2 — Auth & RBAC (Days 4–5)
+**Goal:** Secure access before business features expand.
+- Implement password hashing and JWT access/refresh tokens.
+- Build login, refresh, and `me` endpoints.
+- Add role checks in dependencies for protected routes.
+
+**Exit criteria**
+- Auth flow works end-to-end.
+- Unauthorized and wrong-role access is blocked.
+
+### Part 3 — Asset Registry (Days 6–8)
+**Goal:** Deliver core asset lifecycle records.
+- Add asset categories and assets models/schemas.
+- Implement asset CRUD and list filtering/pagination.
+- Add validated status transition endpoint.
+
+**Exit criteria**
+- Assets can be created, listed, updated, and queried by id.
+- Invalid status transitions return clear validation errors.
+
+### Part 4 — Assignment Workflow (Days 9–10)
+**Goal:** Track who has each asset at any point in time.
+- Implement assignment and return endpoints.
+- Enforce one active assignment per asset.
+- Update asset status automatically on assignment/return.
+
+**Exit criteria**
+- Assignment/return works with full auditability of timestamps.
+- Business rules prevent conflicting active assignments.
+
+### Part 5 — Inventory & Stock Transactions (Days 11–13)
+**Goal:** Manage consumables and stock movements.
+- Implement inventory item CRUD.
+- Implement IN/OUT/ADJUST transactions with quantity validation.
+- Add low-stock endpoint using reorder thresholds.
+
+**Exit criteria**
+- Stock levels update correctly from transaction history.
+- Low-stock endpoint returns correct items.
+
+### Part 6 — Vendors & Procurement (Days 14–15)
+**Goal:** Capture purchasing origin and spending records.
+- Add vendors and purchases models/endpoints.
+- Link purchases to assets/inventory where applicable.
+
+**Exit criteria**
+- Vendor and purchase records are creatable and retrievable.
+- Referential links validate correctly.
+
+### Part 7 — Audit Trail (Day 16)
+**Goal:** Ensure immutable traceability for critical writes.
+- Add audit log model/service.
+- Record before/after state for create/update/delete operations.
+
+**Exit criteria**
+- All sensitive write paths emit audit events.
+- Audit events are queryable for incident review.
+
+### Part 8 — Reporting APIs (Days 17–18)
+**Goal:** Provide operational visibility to stakeholders.
+- Add summary endpoints by status/category/location.
+- Add inventory valuation and low-stock trend outputs.
+
+**Exit criteria**
+- Reports return accurate aggregates on seeded test data.
+
+### Part 9 — Hardening, QA, and Release Prep (Days 19–20)
+**Goal:** Stabilize and prepare production-ready MVP delivery.
+- Add comprehensive tests for critical paths.
+- Add pagination defaults, error normalization, and docs cleanup.
+- Finalize Dockerfile/compose and CI checks.
+
+**Exit criteria**
+- CI green on tests/lint.
+- OpenAPI docs complete for all MVP endpoints.
+- Deployment artifacts validated in a clean environment.
+
+### Parallel Work Rules
+To stay “one after the other,” limit parallelism to low-risk tasks only:
+- Allowed in parallel: docs, API examples, and test data fixtures.
+- Not allowed in parallel: schema-changing backend features.
+- Start the next part only after current part exit criteria is met.
+
+### Weekly Milestone View
+- **Week 1:** Parts 0–2
+- **Week 2:** Parts 3–5
+- **Week 3:** Parts 6–9
+
