@@ -1,2 +1,6 @@
 # Asset-Inventory-Management
-Asset &amp; Inventory Management System
+
+Asset & Inventory Management System.
+
+## FastAPI Planning
+- See implementation plan: `docs/fastapi_implementation_plan.md`
