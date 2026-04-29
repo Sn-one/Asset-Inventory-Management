@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 
 from app.api.v1.router import api_router
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="Asset Inventory Management API", version="0.1.0")
 from app.core.config import settings
 from app.core.security import get_password_hash
 from app.db.base import Base

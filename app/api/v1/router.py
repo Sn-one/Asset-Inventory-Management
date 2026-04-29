@@ -1,5 +1,8 @@
 from fastapi import APIRouter
 
+from app.api.v1.routers import assets
+
+api_router = APIRouter()
 from app.api.v1.routers import assets, auth
 
 api_router = APIRouter()
