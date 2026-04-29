@@ -8,6 +8,12 @@ _ASSETS: dict[int, AssetRead] = {}
 _NEXT_ID = 1
 
 
+def reset_asset_store() -> None:
+    global _NEXT_ID
+    _ASSETS.clear()
+    _NEXT_ID = 1
+
+
 @router.get("", response_model=dict[str, list[AssetRead]])
 def list_assets() -> dict[str, list[AssetRead]]:
     return {"items": list(_ASSETS.values())}

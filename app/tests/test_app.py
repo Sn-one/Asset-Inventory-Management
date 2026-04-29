@@ -3,10 +3,16 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
+from app.api.v1.routers.assets import reset_asset_store
 from app.main import app
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clear_assets() -> None:
+    reset_asset_store()
 
 
 def test_health_check() -> None:
@@ -21,19 +27,21 @@ def test_asset_lifecycle_routes() -> None:
         json={"asset_tag": "AST-100", "serial_no": "S-1", "category": "Laptop", "location": "HQ"},
     )
     assert created.status_code == 201
+    asset_id = created.json()["id"]
     assert created.json()["status"] == "in_stock"
 
     listing = client.get("/api/v1/assets")
     assert listing.status_code == 200
-    assert len(listing.json()["items"]) >= 1
+    assert len(listing.json()["items"]) == 1
 
-    status_resp = client.post("/api/v1/assets/1/status", json={"status": "assigned"})
+    status_resp = client.post(f"/api/v1/assets/{asset_id}/status", json={"status": "assigned"})
     assert status_resp.status_code == 200
     assert status_resp.json()["status"] == "assigned"
 
 
 def test_reject_invalid_status_transition() -> None:
-    client.post("/api/v1/assets", json={"asset_tag": "AST-200"})
-    client.post("/api/v1/assets/2/status", json={"status": "disposed"})
-    invalid = client.post("/api/v1/assets/2/status", json={"status": "assigned"})
+    created = client.post("/api/v1/assets", json={"asset_tag": "AST-200"})
+    asset_id = created.json()["id"]
+    client.post(f"/api/v1/assets/{asset_id}/status", json={"status": "disposed"})
+    invalid = client.post(f"/api/v1/assets/{asset_id}/status", json={"status": "assigned"})
     assert invalid.status_code == 400
