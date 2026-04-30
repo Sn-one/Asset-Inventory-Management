@@ -78,15 +78,25 @@ def _can_write(user: User) -> bool:
 
 @router.get("/", response_class=HTMLResponse)
 def root(request: Request):
-    if request.cookies.get("access_token"):
-        return RedirectResponse(url="/home", status_code=302)
+    token = request.cookies.get("access_token")
+    if token:
+        try:
+            decode_token(token)
+            return RedirectResponse(url="/home", status_code=302)
+        except ValueError:
+            pass
     return RedirectResponse(url="/login", status_code=302)
 
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
-    if request.cookies.get("access_token"):
-        return RedirectResponse(url="/home", status_code=302)
+    token = request.cookies.get("access_token")
+    if token:
+        try:
+            decode_token(token)
+            return RedirectResponse(url="/home", status_code=302)
+        except ValueError:
+            pass
     return templates.TemplateResponse("login.html", {"request": request, "year": datetime.now().year})
 
 
