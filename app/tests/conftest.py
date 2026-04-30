@@ -10,10 +10,12 @@ from app.core.security import get_password_hash  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.models import Role, User  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
-from app.main import _migrate_asset_columns  # noqa: E402
+from app.main import _ASSET_MIGRATIONS, _LOCATION_MIGRATIONS, _migrate_columns, _seed_rfid_index  # noqa: E402
 
 Base.metadata.create_all(bind=engine)
-_migrate_asset_columns()
+_migrate_columns("assets", _ASSET_MIGRATIONS)
+_migrate_columns("locations", _LOCATION_MIGRATIONS)
+_seed_rfid_index()
 
 _db = SessionLocal()
 try:

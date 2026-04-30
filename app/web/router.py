@@ -1,6 +1,7 @@
 import json
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from urllib.parse import quote_plus
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -10,10 +11,20 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.dependencies import get_db
-from app.core.security import create_access_token, decode_token, verify_password
-from app.db.models import Asset, Location, RFIDReader, User
+from app.core.security import create_access_token, decode_token, get_password_hash, verify_password
+from app.db.models import Asset, Location, RFIDReader, Role, User, UserRole
 from app.schemas.asset import CATEGORIES, CATEGORY_CODES, AssetStatus
 from app.services.asset_service import can_transition
+
+ROLES = ["admin", "viewer", "asset_manager", "maintenance_supervisor", "maintenance_manager"]
+
+ROLE_LABELS = {
+    "admin":                  "Administrator",
+    "viewer":                 "Viewer",
+    "asset_manager":          "Asset Manager",
+    "maintenance_supervisor": "Maintenance Supervisor",
+    "maintenance_manager":    "Maintenance Manager",
+}
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -43,7 +54,16 @@ def _require_user(request: Request, db: Session) -> User | RedirectResponse:
 
 
 def _ctx(request: Request, user: User, **kwargs) -> dict:
-    return {"request": request, "user": user, **kwargs}
+    role = user.primary_role if user else "viewer"
+    return {"request": request, "user": user, "user_role": role, "role_labels": ROLE_LABELS, **kwargs}
+
+
+def _is_admin(user: User) -> bool:
+    return user.primary_role == "admin"
+
+
+def _can_write(user: User) -> bool:
+    return user.primary_role in ("admin", "asset_manager", "maintenance_manager")
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +292,8 @@ def asset_create(
     user = _get_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    if not _can_write(user):
+        return RedirectResponse(url="/assets?error=Access+denied", status_code=302)
 
     locations = db.query(Location).order_by(Location.name).all()
 
@@ -519,7 +541,7 @@ def asset_rfid_scan(
         return RedirectResponse(url="/assets?error=Asset+not+found", status_code=303)
 
     _site_id = int(site_id) if site_id else None
-    asset.rfid_last_seen = datetime.utcnow()
+    asset.rfid_last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
     asset.rfid_confirmed_site_id = _site_id
 
     if _site_id:
@@ -544,6 +566,8 @@ def asset_delete(asset_id: int, request: Request, db: Session = Depends(get_db))
     user = _get_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    if not _can_write(user):
+        return RedirectResponse(url="/assets?error=Access+denied", status_code=302)
 
     asset = db.query(Asset).filter(Asset.id == asset_id).first()
     if asset:
@@ -551,6 +575,119 @@ def asset_delete(asset_id: int, request: Request, db: Session = Depends(get_db))
         db.commit()
 
     return RedirectResponse(url="/assets?success=Asset+deleted", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Users — admin management
+# ---------------------------------------------------------------------------
+
+@router.get("/users", response_class=HTMLResponse)
+def users_list(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/home?error=Access+denied", status_code=302)
+
+    users = db.query(User).order_by(User.full_name).all()
+    locations = db.query(Location).order_by(Location.name).all()
+    return templates.TemplateResponse("users/list.html", _ctx(
+        request, user,
+        users=users,
+        locations=locations,
+        roles=ROLES,
+        active_page="users",
+        success=request.query_params.get("success"),
+        error=request.query_params.get("error"),
+    ))
+
+
+@router.get("/users/new", response_class=HTMLResponse)
+def users_new(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/home?error=Access+denied", status_code=302)
+
+    locations = db.query(Location).order_by(Location.name).all()
+    return templates.TemplateResponse("users/new.html", _ctx(
+        request, user,
+        locations=locations,
+        roles=ROLES,
+        active_page="users",
+    ))
+
+
+@router.post("/users")
+def users_create(
+    request: Request,
+    full_name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    role: str = Form(...),
+    site_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/home?error=Access+denied", status_code=302)
+
+    locations = db.query(Location).order_by(Location.name).all()
+
+    if db.query(User).filter(User.email == email.strip().lower()).first():
+        return templates.TemplateResponse("users/new.html", _ctx(
+            request, user,
+            locations=locations, roles=ROLES, active_page="users",
+            error=f"Email '{email}' is already registered",
+        ), status_code=400)
+
+    if role not in ROLES:
+        return templates.TemplateResponse("users/new.html", _ctx(
+            request, user,
+            locations=locations, roles=ROLES, active_page="users",
+            error="Invalid role selected",
+        ), status_code=400)
+
+    _site_id = int(site_id) if site_id else None
+    role_obj = db.query(Role).filter(Role.name == role).first()
+
+    new_user = User(
+        email=email.strip().lower(),
+        full_name=full_name.strip(),
+        password_hash=get_password_hash(password),
+        is_active=True,
+        site_id=_site_id,
+    )
+    db.add(new_user)
+    db.flush()
+    if role_obj:
+        db.add(UserRole(user_id=new_user.id, role_id=role_obj.id))
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/users?success={quote_plus(full_name.strip() + ' created successfully')}",
+        status_code=303,
+    )
+
+
+@router.post("/users/{user_id}/toggle")
+def users_toggle(user_id: int, request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/home?error=Access+denied", status_code=302)
+
+    target = db.query(User).filter(User.id == user_id).first()
+    if target and target.id != user.id:
+        target.is_active = not target.is_active
+        db.commit()
+
+    action = "activated" if (target and target.is_active) else "deactivated"
+    return RedirectResponse(url=f"/users?success=User+{action}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -653,7 +790,7 @@ def rfid_scan(
         return RedirectResponse(url="/rfid/audit?error=RFID+tag+not+found", status_code=303)
 
     _site_id = int(site_id) if site_id else None
-    asset.rfid_last_seen = datetime.utcnow()
+    asset.rfid_last_seen = datetime.now(timezone.utc).replace(tzinfo=None)
     asset.rfid_confirmed_site_id = _site_id
 
     if _site_id:
@@ -663,7 +800,5 @@ def rfid_scan(
             asset.site_id = _site_id
 
     db.commit()
-    return RedirectResponse(
-        url=f"/rfid/audit?success=Scanned+{asset.asset_tag}+confirmed+at+{asset.location or 'site'}",
-        status_code=303,
-    )
+    msg = quote_plus(f"Scanned {asset.asset_tag} confirmed at {asset.location or 'site'}")
+    return RedirectResponse(url=f"/rfid/audit?success={msg}", status_code=303)

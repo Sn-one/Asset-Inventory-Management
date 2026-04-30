@@ -57,11 +57,20 @@
       {% endfor %}
     </select>
   </div>
+  <div>
+    <label class="block text-xs font-medium text-gray-500 mb-1">Station</label>
+    <select name="site" class="px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+      <option value="">All stations</option>
+      {% for loc in locations %}
+      <option value="{{ loc.id }}" {{ 'selected' if loc.id|string == site_filter }}>{{ loc.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
   <button type="submit"
           class="px-4 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors">
     Filter
   </button>
-  {% if q or status_filter or category_filter %}
+  {% if q or status_filter or category_filter or site_filter %}
   <a href="/assets" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg transition-colors">
     Clear
   </a>
@@ -86,7 +95,8 @@
           <th class="px-5 py-3">Asset Tag</th>
           <th class="px-5 py-3">Name / Brand</th>
           <th class="px-5 py-3">Category</th>
-          <th class="px-5 py-3">Location</th>
+          <th class="px-5 py-3">Station</th>
+          <th class="px-5 py-3">RFID</th>
           <th class="px-5 py-3">Assigned To</th>
           <th class="px-5 py-3">Status</th>
           <th class="px-5 py-3 text-right">Actions</th>
@@ -104,7 +114,20 @@
               {% if asset.brand %}<p class="text-xs text-gray-400">{{ asset.brand }}{% if asset.model_no %} · {{ asset.model_no }}{% endif %}</p>{% endif %}
             </td>
             <td class="px-5 py-4 text-gray-500">{{ asset.category or '—' }}</td>
-            <td class="px-5 py-4 text-gray-500">{{ asset.location or '—' }}</td>
+            <td class="px-5 py-4 text-gray-500">
+              {% if asset.site %}
+                <a href="/assets?site={{ asset.site.id }}" class="text-indigo-600 hover:underline">{{ asset.site.name }}</a>
+              {% else %}
+                {{ asset.location or '—' }}
+              {% endif %}
+            </td>
+            <td class="px-5 py-4">
+              {% if asset.rfid_tag %}
+                <span class="font-mono text-xs text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded">{{ asset.rfid_tag }}</span>
+              {% else %}
+                <span class="text-gray-300 text-xs">—</span>
+              {% endif %}
+            </td>
             <td class="px-5 py-4 text-gray-500">{{ asset.assigned_to or '—' }}</td>
             <td class="px-5 py-4">{{ badge(asset.status) }}</td>
             <td class="px-5 py-4 text-right">
@@ -127,7 +150,7 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="7" class="px-6 py-16 text-center">
+            <td colspan="8" class="px-6 py-16 text-center">
               <svg class="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                       d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
