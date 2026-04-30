@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Bulk Upload Assets — AssetIMS{% endblock %}
+{% block page_title %}Bulk Upload Assets{% endblock %}
+
+{% block breadcrumb %}
+<a href="/assets" class="text-gray-400 hover:text-gray-600">Assets</a>
+<span class="mx-2 text-gray-300">/</span>
+<span class="font-semibold text-gray-800">Bulk Upload</span>
+{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="mb-5 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{{ error }}</div>
+{% endif %}
+
+<div class="max-w-2xl space-y-6">
+
+  <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-5 flex items-start gap-4">
+    <svg class="w-6 h-6 text-indigo-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+    </svg>
+    <div>
+      <p class="text-sm font-semibold text-indigo-900 mb-1">Step 1 — Download the template</p>
+      <p class="text-xs text-indigo-700 mb-3">Fill in the Excel template. Required columns: <strong>asset_tag</strong>, <strong>name</strong>. All other columns are optional.</p>
+      <a href="/assets/bulk-upload/template"
+         class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Download Template
+      </a>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <p class="text-sm font-semibold text-gray-700 mb-4">Step 2 — Upload completed file</p>
+    <form method="post" action="/assets/bulk-upload" enctype="multipart/form-data" class="space-y-4">
+      <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors">
+        <input type="file" name="file" id="bulk-file" accept=".xlsx,.xls" required
+               class="hidden" onchange="updateLabel(this)" />
+        <label for="bulk-file" class="cursor-pointer block">
+          <svg class="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+          </svg>
+          <span id="upload-label" class="text-sm text-gray-500">Click to select Excel file (.xlsx)</span>
+        </label>
+      </div>
+      <button type="submit"
+              class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors">
+        Upload & Import
+      </button>
+    </form>
+  </div>
+
+  <div class="bg-gray-50 rounded-xl border border-gray-200 p-4">
+    <p class="text-xs font-semibold text-gray-600 mb-2">Column Reference</p>
+    <table class="w-full text-xs">
+      <thead><tr class="text-left text-gray-400 border-b border-gray-200"><th class="pb-1">Column</th><th class="pb-1">Required</th><th class="pb-1">Example</th></tr></thead>
+      <tbody class="text-gray-600 divide-y divide-gray-100">
+        <tr><td class="py-1 font-mono">asset_tag</td><td>Yes</td><td>FD-ACC-9001</td></tr>
+        <tr><td class="py-1 font-mono">name</td><td>Yes</td><td>Multi-Product Dispenser</td></tr>
+        <tr><td class="py-1 font-mono">brand</td><td>No</td><td>Gilbarco</td></tr>
+        <tr><td class="py-1 font-mono">model_no</td><td>No</td><td>Encore 700</td></tr>
+        <tr><td class="py-1 font-mono">serial_no</td><td>No</td><td>SN1234567</td></tr>
+        <tr><td class="py-1 font-mono">category</td><td>No</td><td>Fuel Dispenser</td></tr>
+        <tr><td class="py-1 font-mono">status</td><td>No</td><td>in_stock / in_service / assigned / in_repair</td></tr>
+        <tr><td class="py-1 font-mono">department</td><td>No</td><td>Operations</td></tr>
+        <tr><td class="py-1 font-mono">location</td><td>No</td><td>Accra Central Station (must match station name exactly)</td></tr>
+        <tr><td class="py-1 font-mono">assigned_to</td><td>No</td><td>Kwame Mensah</td></tr>
+        <tr><td class="py-1 font-mono">purchase_date</td><td>No</td><td>2024-01-15</td></tr>
+        <tr><td class="py-1 font-mono">purchase_cost</td><td>No</td><td>15000</td></tr>
+        <tr><td class="py-1 font-mono">warranty_expiry</td><td>No</td><td>2027-01-15</td></tr>
+        <tr><td class="py-1 font-mono">rfid_tag</td><td>No</td><td>RFID-ACC-FD-001</td></tr>
+        <tr><td class="py-1 font-mono">notes</td><td>No</td><td>Free text</td></tr>
+      </tbody>
+    </table>
+    <p class="text-xs text-gray-400 mt-3">Rows with duplicate <span class="font-mono">asset_tag</span> values will be skipped. Invalid status values default to <span class="font-mono">in_stock</span>.</p>
+  </div>
+
+  <!-- Valid categories reference -->
+  <div class="bg-gray-50 rounded-xl border border-gray-200 p-4">
+    <p class="text-xs font-semibold text-gray-600 mb-2">Valid Categories</p>
+    <div class="flex flex-wrap gap-1.5">
+      {% for cat in categories %}
+      <span class="px-2 py-0.5 bg-white border border-gray-200 rounded text-xs text-gray-600 font-mono">{{ cat }}</span>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+function updateLabel(input) {
+  document.getElementById('upload-label').textContent =
+    input.files[0] ? input.files[0].name : 'Click to select Excel file (.xlsx)';
+}
+</script>
+{% endblock %}

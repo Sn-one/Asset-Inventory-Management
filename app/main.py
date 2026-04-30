@@ -6,7 +6,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.security import get_password_hash
 from app.db.base import Base
-from app.db.models import Asset, Location, RFIDReader, Role, User, UserRole
+from app.db.models import Asset, AssetMovement, Location, RFIDReader, Role, User, UserRole  # noqa: F401
 from app.db.session import SessionLocal, engine
 from app.schemas.asset import CATEGORY_CODES
 from app.web.router import router as web_router
@@ -79,6 +79,35 @@ _ALL_ROLES = [
     "asset_manager",
     "maintenance_supervisor",
     "maintenance_manager",
+]
+
+_WAREHOUSE_ASSETS = [
+    # Spare petroleum equipment in stock
+    {"tag": "FD-WH-0001",  "name": "Spare Multi-Product Dispenser",    "brand": "Gilbarco",      "category": "Fuel Dispenser",           "status": "in_stock"},
+    {"tag": "FD-WH-0002",  "name": "Spare Single-Product Dispenser",   "brand": "Wayne Fueling", "category": "Fuel Dispenser",           "status": "in_stock"},
+    {"tag": "GEN-WH-0001", "name": "100kVA Generator (Spare)",         "brand": "CAT",           "category": "Generator Set",            "status": "in_stock"},
+    {"tag": "GEN-WH-0002", "name": "60kVA Generator (Spare)",          "brand": "Perkins",       "category": "Generator Set",            "status": "in_stock"},
+    {"tag": "SFE-WH-0001", "name": "CO2 Fire Extinguisher (×10 box)",  "brand": "Amerex",        "category": "Safety & Fire Equipment",  "status": "in_stock"},
+    {"tag": "SFE-WH-0002", "name": "Dry Powder Extinguisher (×10)",    "brand": "Kidde",         "category": "Safety & Fire Equipment",  "status": "in_stock"},
+    {"tag": "ELE-WH-0001", "name": "Panel Board 200A",                 "brand": "ABB",           "category": "Electrical Equipment",     "status": "in_stock"},
+    {"tag": "ELE-WH-0002", "name": "Distribution Transformer 50kVA",   "brand": "Siemens",       "category": "Electrical Equipment",     "status": "in_stock"},
+    {"tag": "MFM-WH-0001", "name": "Oval Gear Flow Meter",             "brand": "Badger Meter",  "category": "Measurement & Flow Meter", "status": "in_stock"},
+    {"tag": "SEC-WH-0001", "name": "IP PTZ Camera",                    "brand": "Dahua",         "category": "CCTV & Security",          "status": "in_stock"},
+    # IT equipment in stock
+    {"tag": "IT-WH-0001",  "name": "Lenovo ThinkPad E15 Laptop",       "brand": "Lenovo",        "category": "IT & POS Equipment",       "status": "in_stock", "model_no": "ThinkPad E15 Gen 4"},
+    {"tag": "IT-WH-0002",  "name": "Dell Latitude 5540 Laptop",        "brand": "Dell",          "category": "IT & POS Equipment",       "status": "in_stock", "model_no": "Latitude 5540"},
+    {"tag": "IT-WH-0003",  "name": "HP ProBook 450 Laptop",            "brand": "HP",            "category": "IT & POS Equipment",       "status": "in_stock", "model_no": "ProBook 450 G10"},
+]
+
+_ASSIGNED_LAPTOPS = [
+    {"tag": "IT-CORP-0001", "name": "MacBook Pro 14\"",       "brand": "Apple",  "model_no": "MacBook Pro M3",       "assigned_to": "Kwame Mensah",     "serial": "C02XK0J4JGH7"},
+    {"tag": "IT-CORP-0002", "name": "Dell XPS 15 Laptop",     "brand": "Dell",   "model_no": "XPS 15 9530",          "assigned_to": "Abena Boateng",    "serial": "DL9530XPS2024"},
+    {"tag": "IT-CORP-0003", "name": "Lenovo ThinkPad X1",     "brand": "Lenovo", "model_no": "ThinkPad X1 Carbon",   "assigned_to": "Kofi Asante",      "serial": "LN-X1-C11-2024"},
+    {"tag": "IT-CORP-0004", "name": "HP EliteBook 840",        "brand": "HP",     "model_no": "EliteBook 840 G10",    "assigned_to": "Ama Darko",        "serial": "HP840G10-2024"},
+    {"tag": "IT-CORP-0005", "name": "Dell Latitude 7440",      "brand": "Dell",   "model_no": "Latitude 7440",        "assigned_to": "Yaw Owusu",        "serial": "DL7440-2024A"},
+    {"tag": "IT-CORP-0006", "name": "Lenovo IdeaPad Slim 5",   "brand": "Lenovo", "model_no": "IdeaPad Slim 5i",      "assigned_to": "Emmanuel Sika-Nartey", "serial": "LN-IPS5-2024"},
+    {"tag": "IT-CORP-0007", "name": "MacBook Air 13\"",        "brand": "Apple",  "model_no": "MacBook Air M2",       "assigned_to": "Akosua Frimpong",  "serial": "C02XA0MACAIR3"},
+    {"tag": "IT-CORP-0008", "name": "HP ProBook 440",          "brand": "HP",     "model_no": "ProBook 440 G10",      "assigned_to": "Nana Boateng",     "serial": "HP440G10-2024B"},
 ]
 
 _DEMO_USERS = [
@@ -195,6 +224,29 @@ def create_app() -> FastAPI:
                         site_id=loc.id,
                         location=loc.name,
                         rfid_tag=rfid,
+                    ))
+            db.flush()
+
+            # Warehouse / in-stock assets (no site)
+            for a in _WAREHOUSE_ASSETS:
+                if not db.query(Asset).filter(Asset.asset_tag == a["tag"]).first():
+                    db.add(Asset(
+                        asset_tag=a["tag"], name=a["name"], brand=a["brand"],
+                        category=a["category"], status=a["status"],
+                        model_no=a.get("model_no"),
+                        location="Head Office Warehouse",
+                    ))
+
+            # Laptops assigned to staff
+            for a in _ASSIGNED_LAPTOPS:
+                if not db.query(Asset).filter(Asset.asset_tag == a["tag"]).first():
+                    db.add(Asset(
+                        asset_tag=a["tag"], name=a["name"], brand=a["brand"],
+                        model_no=a["model_no"], serial_no=a["serial"],
+                        category="IT & POS Equipment", status="assigned",
+                        assigned_to=a["assigned_to"],
+                        location="Head Office",
+                        department="Corporate",
                     ))
             db.flush()
 

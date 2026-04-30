@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AssetStatus(StrEnum):
     IN_STOCK = "in_stock"
+    IN_SERVICE = "in_service"
     ASSIGNED = "assigned"
     IN_REPAIR = "in_repair"
     RETIRED = "retired"

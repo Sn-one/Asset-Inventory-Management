@@ -1,11 +1,12 @@
 from app.schemas.asset import AssetStatus
 
 _ALLOWED_TRANSITIONS: dict[AssetStatus, set[AssetStatus]] = {
-    AssetStatus.IN_STOCK: {AssetStatus.ASSIGNED, AssetStatus.IN_REPAIR, AssetStatus.RETIRED},
-    AssetStatus.ASSIGNED: {AssetStatus.IN_STOCK, AssetStatus.IN_REPAIR, AssetStatus.RETIRED},
-    AssetStatus.IN_REPAIR: {AssetStatus.IN_STOCK, AssetStatus.RETIRED, AssetStatus.DISPOSED},
-    AssetStatus.RETIRED: {AssetStatus.DISPOSED},
-    AssetStatus.DISPOSED: set(),
+    AssetStatus.IN_STOCK:    {AssetStatus.IN_SERVICE, AssetStatus.ASSIGNED, AssetStatus.IN_REPAIR, AssetStatus.RETIRED},
+    AssetStatus.IN_SERVICE:  {AssetStatus.IN_STOCK, AssetStatus.IN_REPAIR, AssetStatus.RETIRED},
+    AssetStatus.ASSIGNED:    {AssetStatus.IN_STOCK, AssetStatus.IN_SERVICE, AssetStatus.IN_REPAIR, AssetStatus.RETIRED},
+    AssetStatus.IN_REPAIR:   {AssetStatus.IN_STOCK, AssetStatus.IN_SERVICE, AssetStatus.RETIRED, AssetStatus.DISPOSED},
+    AssetStatus.RETIRED:     {AssetStatus.DISPOSED},
+    AssetStatus.DISPOSED:    set(),
 }
 
 

@@ -1,10 +1,13 @@
+import io
 import json
 import math
+import os
 from datetime import date, datetime, timezone
 from urllib.parse import quote_plus
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+import openpyxl
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -12,9 +15,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.dependencies import get_db
 from app.core.security import create_access_token, decode_token, get_password_hash, verify_password
-from app.db.models import Asset, Location, RFIDReader, Role, User, UserRole
+from app.db.models import Asset, AssetMovement, Location, RFIDReader, Role, User, UserRole
 from app.schemas.asset import CATEGORIES, CATEGORY_CODES, AssetStatus
 from app.services.asset_service import can_transition
+
+_PEMO_UPLOAD_DIR = "app/static/uploads/pemo"
+os.makedirs(_PEMO_UPLOAD_DIR, exist_ok=True)
 
 ROLES = ["admin", "viewer", "asset_manager", "maintenance_supervisor", "maintenance_manager"]
 
@@ -353,6 +359,136 @@ def asset_create(
     db.commit()
     db.refresh(asset)
     return RedirectResponse(url=f"/assets/{asset.id}?success=Asset+created", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Assets — bulk upload via Excel  (must be before /{asset_id})
+# ---------------------------------------------------------------------------
+
+@router.get("/assets/bulk-upload", response_class=HTMLResponse)
+def assets_bulk_upload_form(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _can_write(user):
+        return RedirectResponse(url="/assets?error=Access+denied", status_code=302)
+    locations = db.query(Location).order_by(Location.name).all()
+    return templates.TemplateResponse("assets/bulk_upload.html", _ctx(
+        request, user, locations=locations, categories=CATEGORIES, active_page="assets",
+    ))
+
+
+@router.get("/assets/bulk-upload/template")
+def assets_bulk_template_dl(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Assets"
+    ws.append([
+        "asset_tag", "name", "brand", "model_no", "serial_no",
+        "category", "status", "department", "location", "assigned_to",
+        "purchase_date", "purchase_cost", "warranty_expiry", "rfid_tag", "notes",
+    ])
+    ws.append([
+        "FD-ACC-9001", "Test Dispenser", "Gilbarco", "Model X", "SN12345",
+        "Fuel Dispenser", "in_service", "Operations", "Accra Central Station", "",
+        "2024-01-15", "15000", "2027-01-15", "RFID-ACC-TEST", "Sample asset",
+    ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=assets_template.xlsx"},
+    )
+
+
+@router.post("/assets/bulk-upload")
+async def assets_bulk_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _can_write(user):
+        return RedirectResponse(url="/assets?error=Access+denied", status_code=302)
+
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content))
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+    except Exception:
+        locations = db.query(Location).order_by(Location.name).all()
+        return templates.TemplateResponse("assets/bulk_upload.html", _ctx(
+            request, user, locations=locations, categories=CATEGORIES, active_page="assets",
+            error="Could not read Excel file. Please use the provided template.",
+        ), status_code=400)
+
+    loc_map = {loc.name.lower(): loc.id for loc in db.query(Location).all()}
+    valid_statuses = {s.value for s in AssetStatus}
+
+    added, skipped, errors = 0, 0, []
+    for i, row in enumerate(rows, start=2):
+        if not row or not row[0]:
+            continue
+        (asset_tag, name, brand, model_no, serial_no,
+         category, status, department, location, assigned_to,
+         purchase_date, purchase_cost, warranty_expiry, rfid_tag, notes) = (
+            row[j] if j < len(row) else None for j in range(15)
+        )
+        if not asset_tag or not name:
+            errors.append(f"Row {i}: asset_tag and name are required")
+            continue
+        if db.query(Asset).filter(Asset.asset_tag == str(asset_tag)).first():
+            skipped += 1
+            continue
+        status_val = str(status).strip() if status else "in_stock"
+        if status_val not in valid_statuses:
+            status_val = "in_stock"
+        site_id = loc_map.get(str(location).strip().lower()) if location else None
+
+        def _parse_date(v):
+            if not v:
+                return None
+            try:
+                return date.fromisoformat(str(v)[:10])
+            except Exception:
+                return None
+
+        try:
+            db.add(Asset(
+                asset_tag=str(asset_tag).strip(),
+                name=str(name).strip(),
+                brand=str(brand).strip() if brand else None,
+                model_no=str(model_no).strip() if model_no else None,
+                serial_no=str(serial_no).strip() if serial_no else None,
+                category=str(category).strip() if category else None,
+                status=status_val,
+                department=str(department).strip() if department else None,
+                location=str(location).strip() if location else None,
+                site_id=site_id,
+                assigned_to=str(assigned_to).strip() if assigned_to else None,
+                purchase_date=_parse_date(purchase_date),
+                purchase_cost=float(purchase_cost) if purchase_cost else None,
+                warranty_expiry=_parse_date(warranty_expiry),
+                rfid_tag=str(rfid_tag).strip() if rfid_tag else None,
+                notes=str(notes).strip() if notes else None,
+            ))
+            added += 1
+        except Exception as e:
+            errors.append(f"Row {i}: {e}")
+
+    db.commit()
+    msg = f"{added} asset(s) imported, {skipped} skipped (duplicate tags)"
+    if errors:
+        msg += f". Errors: {'; '.join(errors[:3])}"
+    return RedirectResponse(url=f"/assets?success={quote_plus(msg)}", status_code=303)
 
 
 # ---------------------------------------------------------------------------
@@ -737,6 +873,8 @@ def sites_list(request: Request, db: Session = Depends(get_db)):
         rfid_counts=rfid_counts,
         locations_json=locations_json,
         active_page="sites",
+        success=request.query_params.get("success"),
+        error=request.query_params.get("error"),
     ))
 
 
@@ -802,3 +940,233 @@ def rfid_scan(
     db.commit()
     msg = quote_plus(f"Scanned {asset.asset_tag} confirmed at {asset.location or 'site'}")
     return RedirectResponse(url=f"/rfid/audit?success={msg}", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Assets — Move (PEMO)
+# ---------------------------------------------------------------------------
+
+@router.get("/assets/{asset_id}/move", response_class=HTMLResponse)
+def asset_move_form(asset_id: int, request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user.primary_role not in ("admin", "asset_manager"):
+        return RedirectResponse(url=f"/assets/{asset_id}?error=Access+denied", status_code=302)
+
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        return RedirectResponse(url="/assets?error=Asset+not+found", status_code=302)
+
+    locations = db.query(Location).order_by(Location.name).all()
+    history = (
+        db.query(AssetMovement)
+        .filter(AssetMovement.asset_id == asset_id)
+        .order_by(AssetMovement.created_at.desc())
+        .all()
+    )
+    return templates.TemplateResponse("assets/move.html", _ctx(
+        request, user,
+        asset=asset,
+        locations=locations,
+        history=history,
+        active_page="assets",
+        error=request.query_params.get("error"),
+    ))
+
+
+@router.post("/assets/{asset_id}/move")
+async def asset_move(
+    asset_id: int,
+    request: Request,
+    to_site_id: str = Form(...),
+    pemo_number: str = Form(...),
+    notes: str = Form(""),
+    pemo_document: UploadFile = File(None),
+    db: Session = Depends(get_db),
+):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user.primary_role not in ("admin", "asset_manager"):
+        return RedirectResponse(url=f"/assets/{asset_id}?error=Access+denied", status_code=302)
+
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        return RedirectResponse(url="/assets?error=Asset+not+found", status_code=302)
+
+    if not pemo_number.strip():
+        locations = db.query(Location).order_by(Location.name).all()
+        return templates.TemplateResponse("assets/move.html", _ctx(
+            request, user, asset=asset, locations=locations, history=[], active_page="assets",
+            error="PEMO number is required",
+        ), status_code=400)
+
+    # Save uploaded PEMO document
+    doc_path = None
+    if pemo_document and pemo_document.filename:
+        safe_name = f"{pemo_number.strip().replace('/', '-')}_{pemo_document.filename}"
+        doc_path = os.path.join(_PEMO_UPLOAD_DIR, safe_name)
+        content = await pemo_document.read()
+        with open(doc_path, "wb") as f:
+            f.write(content)
+        doc_path = f"uploads/pemo/{safe_name}"
+
+    _to_site_id = int(to_site_id) if to_site_id else None
+    from_site_id = asset.site_id
+
+    movement = AssetMovement(
+        asset_id=asset.id,
+        from_site_id=from_site_id,
+        to_site_id=_to_site_id,
+        pemo_number=pemo_number.strip(),
+        pemo_document_path=doc_path,
+        notes=notes.strip() or None,
+        moved_by_id=user.id,
+    )
+    db.add(movement)
+
+    if _to_site_id:
+        site = db.query(Location).filter(Location.id == _to_site_id).first()
+        if site:
+            asset.site_id = _to_site_id
+            asset.location = site.name
+
+    db.commit()
+    return RedirectResponse(
+        url=f"/assets/{asset_id}?success={quote_plus('Asset moved — PEMO ' + pemo_number.strip() + ' recorded')}",
+        status_code=303,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sites — add single / bulk upload
+# ---------------------------------------------------------------------------
+
+@router.get("/sites/new", response_class=HTMLResponse)
+def sites_new(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/sites?error=Access+denied", status_code=302)
+    return templates.TemplateResponse("sites/new.html", _ctx(request, user, active_page="sites"))
+
+
+@router.post("/sites")
+def sites_create(
+    request: Request,
+    name: str = Form(...),
+    code: str = Form(...),
+    address: str = Form(""),
+    latitude: str = Form(""),
+    longitude: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/sites?error=Access+denied", status_code=302)
+
+    code_clean = code.strip().upper()
+    if db.query(Location).filter(Location.code == code_clean).first():
+        return templates.TemplateResponse("sites/new.html", _ctx(
+            request, user, active_page="sites",
+            error=f"Station code '{code_clean}' already exists",
+        ), status_code=400)
+
+    db.add(Location(
+        name=name.strip(),
+        code=code_clean,
+        address=address.strip() or None,
+        latitude=float(latitude) if latitude.strip() else None,
+        longitude=float(longitude) if longitude.strip() else None,
+    ))
+    db.commit()
+    return RedirectResponse(url=f"/sites?success={quote_plus(name.strip() + ' added')}", status_code=303)
+
+
+@router.get("/sites/bulk-upload", response_class=HTMLResponse)
+def sites_bulk_upload_form(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/sites?error=Access+denied", status_code=302)
+    return templates.TemplateResponse("sites/bulk_upload.html", _ctx(request, user, active_page="sites"))
+
+
+@router.get("/sites/bulk-upload/template")
+def sites_bulk_template(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Stations"
+    ws.append(["name", "code", "address", "latitude", "longitude"])
+    ws.append(["Example Station", "EXM", "123 Main St, Accra", "5.5502", "-0.2174"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=stations_template.xlsx"},
+    )
+
+
+@router.post("/sites/bulk-upload")
+async def sites_bulk_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if not _is_admin(user):
+        return RedirectResponse(url="/sites?error=Access+denied", status_code=302)
+
+    content = await file.read()
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(content))
+        ws = wb.active
+        rows = list(ws.iter_rows(min_row=2, values_only=True))
+    except Exception:
+        return templates.TemplateResponse("sites/bulk_upload.html", _ctx(
+            request, user, active_page="sites",
+            error="Could not read Excel file. Please use the provided template.",
+        ), status_code=400)
+
+    added, skipped = 0, 0
+    errors = []
+    for i, row in enumerate(rows, start=2):
+        if not row or not row[0]:
+            continue
+        name, code, address, lat, lng = (row[j] if j < len(row) else None for j in range(5))
+        if not name or not code:
+            errors.append(f"Row {i}: name and code are required")
+            continue
+        code_clean = str(code).strip().upper()
+        if db.query(Location).filter(Location.code == code_clean).first():
+            skipped += 1
+            continue
+        try:
+            db.add(Location(
+                name=str(name).strip(),
+                code=code_clean,
+                address=str(address).strip() if address else None,
+                latitude=float(lat) if lat else None,
+                longitude=float(lng) if lng else None,
+            ))
+            added += 1
+        except Exception as e:
+            errors.append(f"Row {i}: {e}")
+
+    db.commit()
+    msg = f"{added} station(s) added, {skipped} skipped (duplicate codes)"
+    if errors:
+        msg += f". Errors: {'; '.join(errors[:3])}"
+    return RedirectResponse(url=f"/sites?success={quote_plus(msg)}", status_code=303)

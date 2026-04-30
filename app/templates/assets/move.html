@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Move Asset — AssetIMS{% endblock %}
+{% block page_title %}Move Asset{% endblock %}
+
+{% block breadcrumb %}
+<a href="/assets" class="text-gray-400 hover:text-gray-600">Assets</a>
+<span class="mx-2 text-gray-300">/</span>
+<a href="/assets/{{ asset.id }}" class="text-gray-400 hover:text-gray-600">{{ asset.asset_tag }}</a>
+<span class="mx-2 text-gray-300">/</span>
+<span class="font-semibold text-gray-800">Move</span>
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="mb-5 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+  <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+  </svg>
+  {{ error }}
+</div>
+{% endif %}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- PEMO Form -->
+  <div class="lg:col-span-2">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+
+      <!-- Current location banner -->
+      <div class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+        <svg class="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <div>
+          <p class="text-sm font-semibold text-amber-800">Current Location</p>
+          <p class="text-sm text-amber-700">
+            {% if asset.site %}{{ asset.site.name }}{% elif asset.location %}{{ asset.location }}{% else %}Not assigned{% endif %}
+          </p>
+        </div>
+      </div>
+
+      <form method="post" action="/assets/{{ asset.id }}/move" enctype="multipart/form-data" class="space-y-5">
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Move To Station <span class="text-red-500">*</span></label>
+          <select name="to_site_id" required
+                  class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="">Select destination station…</option>
+            {% for loc in locations %}
+            <option value="{{ loc.id }}" {% if asset.site and asset.site.id == loc.id %}disabled class="text-gray-300"{% endif %}>
+              {{ loc.name }}{% if asset.site and asset.site.id == loc.id %} (current){% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">PEMO Number <span class="text-red-500">*</span></label>
+          <input type="text" name="pemo_number" required placeholder="e.g. PEMO-2025-001"
+                 class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 font-mono" />
+          <p class="text-xs text-gray-400 mt-1">Property Equipment Movement Order reference number</p>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            PEMO Document <span class="text-gray-400 text-xs font-normal">(PDF, image, or Word — optional but recommended)</span>
+          </label>
+          <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-indigo-400 transition-colors">
+            <input type="file" name="pemo_document" id="pemo-file"
+                   accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                   class="hidden" onchange="updateFileLabel(this)" />
+            <label for="pemo-file" class="cursor-pointer">
+              <svg class="w-8 h-8 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+              </svg>
+              <span id="file-label" class="text-sm text-gray-500">Click to upload signed PEMO document</span>
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <textarea name="notes" rows="3" placeholder="Reason for move, approver name, etc."
+                    class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none"></textarea>
+        </div>
+
+        <div class="flex gap-3 pt-2">
+          <button type="submit"
+                  class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors">
+            Record Movement
+          </button>
+          <a href="/assets/{{ asset.id }}"
+             class="px-5 py-2.5 border border-gray-300 text-gray-600 hover:text-gray-800 text-sm font-medium rounded-lg transition-colors">
+            Cancel
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Asset info + movement history -->
+  <div class="space-y-4">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Asset</h3>
+      <p class="font-mono text-sm font-semibold text-indigo-700">{{ asset.asset_tag }}</p>
+      <p class="text-sm text-gray-800 mt-0.5">{{ asset.name }}</p>
+      {% if asset.brand %}<p class="text-xs text-gray-400 mt-0.5">{{ asset.brand }}{% if asset.model_no %} · {{ asset.model_no }}{% endif %}</p>{% endif %}
+      <p class="text-xs text-gray-500 mt-2">Category: {{ asset.category or '—' }}</p>
+    </div>
+
+    {% if history %}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Movement History</h3>
+      <div class="space-y-3">
+        {% for m in history %}
+        <div class="border-l-2 border-indigo-200 pl-3">
+          <p class="text-xs font-semibold text-gray-700">PEMO {{ m.pemo_number }}</p>
+          <p class="text-xs text-gray-500">
+            {{ m.from_site.name if m.from_site else '—' }} → {{ m.to_site.name if m.to_site else '—' }}
+          </p>
+          <p class="text-xs text-gray-400">{{ m.created_at.strftime('%d %b %Y') }}{% if m.moved_by %} · {{ m.moved_by.full_name }}{% endif %}</p>
+          {% if m.pemo_document_path %}
+          <a href="/static/{{ m.pemo_document_path }}" target="_blank"
+             class="text-xs text-indigo-600 hover:underline">View document →</a>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+function updateFileLabel(input) {
+  document.getElementById('file-label').textContent =
+    input.files[0] ? input.files[0].name : 'Click to upload signed PEMO document';
+}
+</script>
+{% endblock %}
