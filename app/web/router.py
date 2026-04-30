@@ -1,15 +1,18 @@
+import json
+import math
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.dependencies import get_db
 from app.core.security import create_access_token, decode_token, verify_password
-from app.db.models import Asset, User
-from app.schemas.asset import CATEGORIES, AssetStatus
+from app.db.models import Asset, Location, RFIDReader, User
+from app.schemas.asset import CATEGORIES, CATEGORY_CODES, AssetStatus
 from app.services.asset_service import can_transition
 
 router = APIRouter()
@@ -109,12 +112,62 @@ def home(request: Request, db: Session = Depends(get_db)):
     }
     recent = assets[:5]
 
+    # Build station map data: asset count per site
+    asset_counts: dict[int, int] = dict(
+        db.query(Asset.site_id, func.count(Asset.id))
+        .filter(Asset.site_id.isnot(None))
+        .group_by(Asset.site_id)
+        .all()
+    )
+    locations = db.query(Location).filter(
+        Location.latitude.isnot(None), Location.longitude.isnot(None)
+    ).order_by(Location.name).all()
+
+    locations_json = json.dumps([
+        {
+            "id": loc.id,
+            "name": loc.name,
+            "code": loc.code,
+            "address": loc.address or "",
+            "latitude": loc.latitude,
+            "longitude": loc.longitude,
+            "asset_count": asset_counts.get(loc.id, 0),
+        }
+        for loc in locations
+    ])
+
     return templates.TemplateResponse("home.html", _ctx(
         request, user,
         stats=stats,
         recent=recent,
+        locations_json=locations_json,
         active_page="home",
     ))
+
+
+# ---------------------------------------------------------------------------
+# Assets — auto-tag generation (must be before /{asset_id} route)
+# ---------------------------------------------------------------------------
+
+@router.get("/assets/next-tag")
+def asset_next_tag(
+    category: str = "",
+    site_code: str = "",
+    db: Session = Depends(get_db),
+):
+    cat_code = CATEGORY_CODES.get(category, "OTH")
+    site_part = site_code.upper()[:5] if site_code else "GEN"
+    prefix = f"{cat_code}-{site_part}-"
+
+    count = db.query(func.count(Asset.id)).filter(Asset.asset_tag.like(f"{prefix}%")).scalar() or 0
+    tag = f"{prefix}{count + 1:04d}"
+
+    # Guarantee uniqueness
+    while db.query(Asset).filter(Asset.asset_tag == tag).first():
+        count += 1
+        tag = f"{prefix}{count + 1:04d}"
+
+    return JSONResponse({"tag": tag})
 
 
 # ---------------------------------------------------------------------------
@@ -127,6 +180,7 @@ def assets_list(
     q: str = "",
     status: str = "",
     category: str = "",
+    site: str = "",
     page: int = 1,
     db: Session = Depends(get_db),
 ):
@@ -144,17 +198,21 @@ def assets_list(
             | Asset.name.ilike(like)
             | Asset.serial_no.ilike(like)
             | Asset.brand.ilike(like)
+            | Asset.rfid_tag.ilike(like)
         )
     if status:
         query = query.filter(Asset.status == status)
     if category:
         query = query.filter(Asset.category == category)
+    if site:
+        query = query.filter(Asset.site_id == int(site))
 
     total = query.count()
-    import math
     pages = max(1, math.ceil(total / per_page))
     page = max(1, min(page, pages))
     assets = query.order_by(Asset.id.desc()).offset((page - 1) * per_page).limit(per_page).all()
+
+    locations = db.query(Location).order_by(Location.name).all()
 
     return templates.TemplateResponse("assets/list.html", _ctx(
         request, user,
@@ -166,8 +224,10 @@ def assets_list(
         q=q,
         status_filter=status,
         category_filter=category,
+        site_filter=site,
         categories=CATEGORIES,
         statuses=list(AssetStatus),
+        locations=locations,
         active_page="assets",
     ))
 
@@ -181,9 +241,11 @@ def asset_new(request: Request, db: Session = Depends(get_db)):
     user = _get_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
+    locations = db.query(Location).order_by(Location.name).all()
     return templates.TemplateResponse("assets/new.html", _ctx(
         request, user,
         categories=CATEGORIES,
+        locations=locations,
         active_page="assets",
     ))
 
@@ -197,8 +259,9 @@ def asset_create(
     model_no: str = Form(""),
     serial_no: str = Form(""),
     category: str = Form(""),
+    site_id: str = Form(""),
+    rfid_tag: str = Form(""),
     department: str = Form(""),
-    location: str = Form(""),
     assigned_to: str = Form(""),
     purchase_date: str = Form(""),
     purchase_cost: str = Form(""),
@@ -210,14 +273,32 @@ def asset_create(
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
+    locations = db.query(Location).order_by(Location.name).all()
+
     if db.query(Asset).filter(Asset.asset_tag == asset_tag).first():
         return templates.TemplateResponse("assets/new.html", _ctx(
             request, user,
             categories=CATEGORIES,
+            locations=locations,
             active_page="assets",
             error=f"Asset tag '{asset_tag}' already exists",
-            form=request,
         ), status_code=400)
+
+    _rfid = rfid_tag.strip() or None
+    if _rfid and db.query(Asset).filter(Asset.rfid_tag == _rfid).first():
+        return templates.TemplateResponse("assets/new.html", _ctx(
+            request, user,
+            categories=CATEGORIES,
+            locations=locations,
+            active_page="assets",
+            error=f"RFID tag '{_rfid}' is already assigned to another asset",
+        ), status_code=400)
+
+    _site_id = int(site_id) if site_id else None
+    _location = None
+    if _site_id:
+        site = db.query(Location).filter(Location.id == _site_id).first()
+        _location = site.name if site else None
 
     def _date(s: str) -> date | None:
         return date.fromisoformat(s) if s else None
@@ -235,8 +316,10 @@ def asset_create(
         model_no=model_no.strip() or None,
         serial_no=serial_no.strip() or None,
         category=category or None,
+        site_id=_site_id,
+        location=_location,
+        rfid_tag=_rfid,
         department=department.strip() or None,
-        location=location.strip() or None,
         assigned_to=assigned_to.strip() or None,
         purchase_date=_date(purchase_date),
         purchase_cost=_float(purchase_cost),
@@ -291,10 +374,12 @@ def asset_edit(asset_id: int, request: Request, db: Session = Depends(get_db)):
     if not asset:
         return RedirectResponse(url="/assets", status_code=302)
 
+    locations = db.query(Location).order_by(Location.name).all()
     return templates.TemplateResponse("assets/edit.html", _ctx(
         request, user,
         asset=asset,
         categories=CATEGORIES,
+        locations=locations,
         active_page="assets",
     ))
 
@@ -308,8 +393,9 @@ def asset_update(
     model_no: str = Form(""),
     serial_no: str = Form(""),
     category: str = Form(""),
+    site_id: str = Form(""),
+    rfid_tag: str = Form(""),
     department: str = Form(""),
-    location: str = Form(""),
     assigned_to: str = Form(""),
     purchase_date: str = Form(""),
     purchase_cost: str = Form(""),
@@ -325,6 +411,28 @@ def asset_update(
     if not asset:
         return RedirectResponse(url="/assets", status_code=302)
 
+    _rfid = rfid_tag.strip() or None
+    if _rfid and _rfid != asset.rfid_tag:
+        conflict = db.query(Asset).filter(Asset.rfid_tag == _rfid, Asset.id != asset_id).first()
+        if conflict:
+            locations = db.query(Location).order_by(Location.name).all()
+            return templates.TemplateResponse("assets/edit.html", _ctx(
+                request, user,
+                asset=asset,
+                categories=CATEGORIES,
+                locations=locations,
+                active_page="assets",
+                error=f"RFID tag '{_rfid}' is already assigned to {conflict.asset_tag}",
+            ), status_code=400)
+
+    _site_id = int(site_id) if site_id else None
+    _location = asset.location
+    if _site_id:
+        site = db.query(Location).filter(Location.id == _site_id).first()
+        _location = site.name if site else None
+    elif not _site_id:
+        _location = None
+
     def _date(s: str) -> date | None:
         return date.fromisoformat(s) if s else None
 
@@ -339,8 +447,10 @@ def asset_update(
     asset.model_no = model_no.strip() or None
     asset.serial_no = serial_no.strip() or None
     asset.category = category or None
+    asset.site_id = _site_id
+    asset.location = _location
+    asset.rfid_tag = _rfid
     asset.department = department.strip() or None
-    asset.location = location.strip() or None
     asset.assigned_to = assigned_to.strip() or None
     asset.purchase_date = _date(purchase_date)
     asset.purchase_cost = _float(purchase_cost)
@@ -390,6 +500,42 @@ def asset_status(
 
 
 # ---------------------------------------------------------------------------
+# Assets — RFID scan (simulate reader confirming asset location)
+# ---------------------------------------------------------------------------
+
+@router.post("/assets/{asset_id}/rfid-scan")
+def asset_rfid_scan(
+    asset_id: int,
+    request: Request,
+    site_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    asset = db.query(Asset).filter(Asset.id == asset_id).first()
+    if not asset:
+        return RedirectResponse(url="/assets?error=Asset+not+found", status_code=303)
+
+    _site_id = int(site_id) if site_id else None
+    asset.rfid_last_seen = datetime.utcnow()
+    asset.rfid_confirmed_site_id = _site_id
+
+    if _site_id:
+        site = db.query(Location).filter(Location.id == _site_id).first()
+        if site:
+            asset.location = site.name
+            asset.site_id = _site_id
+
+    db.commit()
+    return RedirectResponse(
+        url=f"/assets/{asset_id}?success=RFID+scan+recorded",
+        status_code=303,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Assets — delete
 # ---------------------------------------------------------------------------
 
@@ -405,3 +551,119 @@ def asset_delete(asset_id: int, request: Request, db: Session = Depends(get_db))
         db.commit()
 
     return RedirectResponse(url="/assets?success=Asset+deleted", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Sites
+# ---------------------------------------------------------------------------
+
+@router.get("/sites", response_class=HTMLResponse)
+def sites_list(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    locations = db.query(Location).order_by(Location.name).all()
+
+    asset_counts: dict[int, int] = dict(
+        db.query(Asset.site_id, func.count(Asset.id))
+        .filter(Asset.site_id.isnot(None))
+        .group_by(Asset.site_id)
+        .all()
+    )
+    rfid_counts: dict[int, int] = dict(
+        db.query(RFIDReader.site_id, func.count(RFIDReader.id))
+        .filter(RFIDReader.site_id.isnot(None), RFIDReader.is_active == True)  # noqa: E712
+        .group_by(RFIDReader.site_id)
+        .all()
+    )
+
+    locations_json = json.dumps([
+        {
+            "id": loc.id,
+            "name": loc.name,
+            "code": loc.code,
+            "address": loc.address or "",
+            "latitude": loc.latitude,
+            "longitude": loc.longitude,
+            "asset_count": asset_counts.get(loc.id, 0),
+            "rfid_count": rfid_counts.get(loc.id, 0),
+        }
+        for loc in locations
+        if loc.latitude and loc.longitude
+    ])
+
+    return templates.TemplateResponse("sites/list.html", _ctx(
+        request, user,
+        locations=locations,
+        asset_counts=asset_counts,
+        rfid_counts=rfid_counts,
+        locations_json=locations_json,
+        active_page="sites",
+    ))
+
+
+# ---------------------------------------------------------------------------
+# RFID Audit
+# ---------------------------------------------------------------------------
+
+@router.get("/rfid/audit", response_class=HTMLResponse)
+def rfid_audit(request: Request, db: Session = Depends(get_db)):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    rfid_assets = (
+        db.query(Asset)
+        .filter(Asset.rfid_tag.isnot(None))
+        .order_by(Asset.rfid_last_seen.desc().nullslast())
+        .all()
+    )
+    mobile_readers = (
+        db.query(RFIDReader)
+        .filter(RFIDReader.reader_type == "mobile", RFIDReader.is_active == True)  # noqa: E712
+        .all()
+    )
+    locations = db.query(Location).order_by(Location.name).all()
+
+    return templates.TemplateResponse("rfid/audit.html", _ctx(
+        request, user,
+        rfid_assets=rfid_assets,
+        mobile_readers=mobile_readers,
+        locations=locations,
+        success=request.query_params.get("success"),
+        error=request.query_params.get("error"),
+        active_page="rfid",
+    ))
+
+
+@router.post("/rfid/scan")
+def rfid_scan(
+    request: Request,
+    rfid_tag: str = Form(...),
+    site_id: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = _get_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    asset = db.query(Asset).filter(Asset.rfid_tag == rfid_tag.strip()).first()
+    if not asset:
+        return RedirectResponse(url="/rfid/audit?error=RFID+tag+not+found", status_code=303)
+
+    _site_id = int(site_id) if site_id else None
+    asset.rfid_last_seen = datetime.utcnow()
+    asset.rfid_confirmed_site_id = _site_id
+
+    if _site_id:
+        site = db.query(Location).filter(Location.id == _site_id).first()
+        if site:
+            asset.location = site.name
+            asset.site_id = _site_id
+
+    db.commit()
+    return RedirectResponse(
+        url=f"/rfid/audit?success=Scanned+{asset.asset_tag}+confirmed+at+{asset.location or 'site'}",
+        status_code=303,
+    )

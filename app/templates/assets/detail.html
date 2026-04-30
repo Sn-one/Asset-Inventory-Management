@@ -78,20 +78,108 @@
       </dl>
     </div>
 
+    <!-- Location & Site -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
       <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Location & Assignment</h2>
       <dl>
-        {{ detail_row("Location", asset.location) }}
+        <div class="flex gap-3 py-3 border-b border-gray-50">
+          <dt class="w-36 flex-shrink-0 text-sm text-gray-400">Station</dt>
+          <dd class="text-sm text-gray-800 font-medium">
+            {% if asset.site %}
+              <a href="/assets?site={{ asset.site.id }}" class="text-indigo-600 hover:underline">{{ asset.site.name }}</a>
+              {% if asset.site.address %}
+                <span class="text-gray-400 font-normal ml-1">· {{ asset.site.address }}</span>
+              {% endif %}
+            {% else %}
+              {{ asset.location or '—' }}
+            {% endif %}
+          </dd>
+        </div>
+        {% if asset.site and asset.site.latitude %}
+        <div class="flex gap-3 py-3 border-b border-gray-50">
+          <dt class="w-36 flex-shrink-0 text-sm text-gray-400">Coordinates</dt>
+          <dd class="text-sm text-gray-600 font-mono">
+            {{ "%.4f" | format(asset.site.latitude) }}, {{ "%.4f" | format(asset.site.longitude) }}
+          </dd>
+        </div>
+        {% endif %}
         {{ detail_row("Department", asset.department) }}
         {{ detail_row("Assigned To", asset.assigned_to) }}
       </dl>
+    </div>
+
+    <!-- RFID -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+      <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">RFID Tracking</h2>
+      {% if asset.rfid_tag %}
+      <dl>
+        <div class="flex gap-3 py-3 border-b border-gray-50">
+          <dt class="w-36 flex-shrink-0 text-sm text-gray-400">RFID Tag</dt>
+          <dd class="text-sm font-mono font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">{{ asset.rfid_tag }}</dd>
+        </div>
+        <div class="flex gap-3 py-3 border-b border-gray-50">
+          <dt class="w-36 flex-shrink-0 text-sm text-gray-400">Last Scanned</dt>
+          <dd class="text-sm text-gray-800 font-medium">
+            {% if asset.rfid_last_seen %}
+              {{ asset.rfid_last_seen.strftime('%d %b %Y, %H:%M UTC') }}
+            {% else %}
+              <span class="text-gray-400">Not yet scanned</span>
+            {% endif %}
+          </dd>
+        </div>
+        <div class="flex gap-3 py-3">
+          <dt class="w-36 flex-shrink-0 text-sm text-gray-400">Confirmed At</dt>
+          <dd class="text-sm text-gray-800 font-medium">
+            {% if asset.rfid_confirmed_site %}
+              <span class="inline-flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-green-400"></span>
+                {{ asset.rfid_confirmed_site.name }}
+              </span>
+            {% else %}
+              <span class="text-gray-400">—</span>
+            {% endif %}
+          </dd>
+        </div>
+      </dl>
+
+      <!-- Simulate RFID scan -->
+      <div class="mt-4 pt-4 border-t border-gray-100">
+        <p class="text-xs text-gray-500 mb-2 font-medium">Simulate RFID scan (stationary reader confirm)</p>
+        <form method="post" action="/assets/{{ asset.id }}/rfid-scan" class="flex gap-2">
+          <select name="site_id"
+                  class="flex-1 px-3 py-2 text-xs border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white">
+            <option value="">Select site…</option>
+            {% if asset.site %}
+            <option value="{{ asset.site.id }}" selected>{{ asset.site.name }}</option>
+            {% endif %}
+          </select>
+          <button type="submit"
+                  class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium rounded-lg transition-colors whitespace-nowrap">
+            Record Scan
+          </button>
+        </form>
+      </div>
+      {% else %}
+      <div class="text-center py-6">
+        <div class="w-10 h-10 mx-auto mb-2 rounded-full bg-gray-100 flex items-center justify-center">
+          <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+          </svg>
+        </div>
+        <p class="text-sm text-gray-400">No RFID tag assigned.</p>
+        <a href="/assets/{{ asset.id }}/edit" class="text-xs text-indigo-600 hover:underline mt-1 inline-block">
+          Add RFID tag →
+        </a>
+      </div>
+      {% endif %}
     </div>
 
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
       <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Purchase & Warranty</h2>
       <dl>
         {{ detail_row("Purchase Date", asset.purchase_date) }}
-        {{ detail_row("Purchase Cost", ('$' ~ '%.2f' | format(asset.purchase_cost)) if asset.purchase_cost else None) }}
+        {{ detail_row("Purchase Cost", ('GHS ' ~ '%.2f' | format(asset.purchase_cost)) if asset.purchase_cost else None) }}
         {{ detail_row("Warranty Expiry", asset.warranty_expiry) }}
       </dl>
     </div>
@@ -153,6 +241,24 @@
         </svg>
         Edit asset details
       </a>
+      {% if asset.site %}
+      <a href="/assets?site={{ asset.site.id }}"
+         class="flex items-center gap-2 text-sm text-gray-700 hover:text-indigo-600 py-1.5 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+        </svg>
+        Other assets at this station
+      </a>
+      {% endif %}
+      <a href="/rfid/audit"
+         class="flex items-center gap-2 text-sm text-gray-700 hover:text-indigo-600 py-1.5 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        RFID audit log
+      </a>
       <button onclick="document.getElementById('deleteModal').classList.remove('hidden')"
               class="flex items-center gap-2 text-sm text-red-500 hover:text-red-700 py-1.5 transition-colors w-full text-left">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -195,7 +301,6 @@
   </div>
 </div>
 
-<!-- Toast -->
 {% if success %}
 <div id="flash" class="fixed bottom-6 right-6 bg-green-600 text-white text-sm px-5 py-3 rounded-xl shadow-lg">{{ success | replace('+', ' ') }}</div>
 {% endif %}

@@ -2,6 +2,11 @@
 {% block title %}Dashboard — AssetIMS{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 
+{% block head_extra %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+{% endblock %}
+
 {% block header_actions %}
 <a href="/assets/new"
    class="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
@@ -33,6 +38,15 @@
   {% endfor %}
 </div>
 
+<!-- Station Map -->
+<div class="bg-white rounded-xl border border-gray-200 shadow-sm mb-8">
+  <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+    <h2 class="font-semibold text-gray-800">Station Map — Ghana</h2>
+    <a href="/sites" class="text-sm text-indigo-600 hover:text-indigo-700 font-medium">View all stations →</a>
+  </div>
+  <div id="asset-map" style="height: 420px; border-radius: 0 0 0.75rem 0.75rem;"></div>
+</div>
+
 <!-- Recent assets -->
 <div class="bg-white rounded-xl border border-gray-200 shadow-sm">
   <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -46,7 +60,8 @@
           <th class="px-6 py-3">Asset Tag</th>
           <th class="px-6 py-3">Name</th>
           <th class="px-6 py-3">Category</th>
-          <th class="px-6 py-3">Location</th>
+          <th class="px-6 py-3">Station</th>
+          <th class="px-6 py-3">RFID</th>
           <th class="px-6 py-3">Status</th>
           <th class="px-6 py-3"></th>
         </tr>
@@ -65,7 +80,23 @@
             <td class="px-6 py-4 font-mono text-xs font-semibold text-gray-700">{{ asset.asset_tag }}</td>
             <td class="px-6 py-4 font-medium text-gray-900">{{ asset.name or '—' }}</td>
             <td class="px-6 py-4 text-gray-500">{{ asset.category or '—' }}</td>
-            <td class="px-6 py-4 text-gray-500">{{ asset.location or '—' }}</td>
+            <td class="px-6 py-4 text-gray-500">
+              {% if asset.site %}
+                <span class="inline-flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                  {{ asset.site.name }}
+                </span>
+              {% else %}
+                {{ asset.location or '—' }}
+              {% endif %}
+            </td>
+            <td class="px-6 py-4">
+              {% if asset.rfid_tag %}
+                <span class="font-mono text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">{{ asset.rfid_tag }}</span>
+              {% else %}
+                <span class="text-gray-300 text-xs">—</span>
+              {% endif %}
+            </td>
             <td class="px-6 py-4">
               <span class="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium {{ badge.get(asset.status, 'bg-gray-100 text-gray-600') }}">
                 {{ asset.status | replace('_', ' ') | title }}
@@ -78,7 +109,7 @@
           {% endfor %}
         {% else %}
           <tr>
-            <td colspan="6" class="px-6 py-12 text-center text-gray-400 text-sm">
+            <td colspan="7" class="px-6 py-12 text-center text-gray-400 text-sm">
               No assets yet. <a href="/assets/new" class="text-indigo-600 hover:underline">Add one</a>.
             </td>
           </tr>
@@ -87,4 +118,46 @@
     </table>
   </div>
 </div>
+
+<script>
+(function () {
+  const sitesData = {{ locations_json | safe }};
+  const map = L.map('asset-map').setView([7.9465, -1.0232], 7);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    maxZoom: 18,
+  }).addTo(map);
+
+  const activeIcon = L.divIcon({
+    className: '',
+    html: '<div style="background:#4f46e5;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px #4f46e5;"></div>',
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+  });
+  const emptyIcon = L.divIcon({
+    className: '',
+    html: '<div style="background:#94a3b8;width:10px;height:10px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 2px #94a3b8;"></div>',
+    iconSize: [10, 10],
+    iconAnchor: [5, 5],
+  });
+
+  sitesData.forEach(function (loc) {
+    if (loc.latitude == null || loc.longitude == null) return;
+    const icon = loc.asset_count > 0 ? activeIcon : emptyIcon;
+    const marker = L.marker([loc.latitude, loc.longitude], { icon }).addTo(map);
+    marker.bindPopup(
+      '<div style="min-width:160px">' +
+      '<strong style="font-size:13px">' + loc.name + '</strong><br>' +
+      '<span style="font-size:11px;color:#6b7280">' + (loc.address || '') + '</span><br>' +
+      '<div style="margin-top:6px;font-size:12px">' +
+      '<span style="background:#eef2ff;color:#4338ca;padding:2px 6px;border-radius:9999px;font-weight:600">' +
+      loc.asset_count + ' asset' + (loc.asset_count !== 1 ? 's' : '') +
+      '</span></div>' +
+      '<a href="/assets?site=' + loc.id + '" style="font-size:11px;color:#4f46e5;margin-top:4px;display:inline-block">View assets →</a>' +
+      '</div>'
+    );
+  });
+})();
+</script>
 {% endblock %}

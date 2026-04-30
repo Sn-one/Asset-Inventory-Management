@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "assets/_form.html" import field, select_field, textarea_field %}
+{% from "assets/_form.html" import field, select_field, textarea_field, location_select %}
 {% block title %}Edit {{ asset.asset_tag }} — AssetIMS{% endblock %}
 
 {% block breadcrumb %}
@@ -32,11 +32,34 @@
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
     <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Identification</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {{ field("Display Name", "name", asset.name, placeholder="e.g. MacBook Pro 14-inch") }}
-      {{ field("Brand / Manufacturer", "brand", asset.brand, placeholder="e.g. Apple") }}
-      {{ field("Model Number", "model_no", asset.model_no, placeholder="e.g. MKGT3LL/A") }}
-      {{ field("Serial Number", "serial_no", asset.serial_no, placeholder="e.g. C02XG1ABMD6T") }}
+      {{ field("Display Name", "name", asset.name, placeholder="e.g. Wayne Helix 1000 Dispenser") }}
+      {{ field("Brand / Manufacturer", "brand", asset.brand, placeholder="e.g. Wayne Fueling Systems") }}
+      {{ field("Model Number", "model_no", asset.model_no, placeholder="e.g. HX-6000") }}
+      {{ field("Serial Number", "serial_no", asset.serial_no, placeholder="e.g. SN-2024-GH-001") }}
       {{ select_field("Category", "category", categories, asset.category) }}
+    </div>
+  </div>
+
+  <!-- RFID -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-1">RFID Tag</h2>
+    <p class="text-xs text-gray-400 mb-4">
+      The unique ID of the RFID chip physically attached to this asset.
+      Leave blank if no RFID chip is installed.
+    </p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ field("RFID Tag ID", "rfid_tag", asset.rfid_tag, placeholder="e.g. E200-6811-5020-0100-0000-05A1") }}
+      {% if asset.rfid_last_seen %}
+      <div class="flex items-end">
+        <div class="text-xs text-gray-500 bg-green-50 border border-green-100 rounded-lg px-3 py-2 w-full">
+          <span class="font-medium text-green-700">Last scanned:</span>
+          {{ asset.rfid_last_seen.strftime('%d %b %Y, %H:%M') }}<br>
+          {% if asset.rfid_confirmed_site %}
+            at <span class="font-medium">{{ asset.rfid_confirmed_site.name }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 
@@ -44,9 +67,9 @@
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
     <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Location & Assignment</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      {{ field("Location", "location", asset.location, placeholder="e.g. Head Office, Room 204") }}
-      {{ field("Department", "department", asset.department, placeholder="e.g. Engineering") }}
-      {{ field("Assigned To", "assigned_to", asset.assigned_to, placeholder="Person's name") }}
+      {{ location_select("Station / Site", "site_id", locations, asset.site_id) }}
+      {{ field("Department", "department", asset.department, placeholder="e.g. Operations") }}
+      {{ field("Assigned To", "assigned_to", asset.assigned_to, placeholder="Person's name or team") }}
     </div>
   </div>
 
@@ -56,7 +79,7 @@
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       {{ field("Purchase Date", "purchase_date",
                asset.purchase_date.isoformat() if asset.purchase_date else '', type="date") }}
-      {{ field("Purchase Cost ($)", "purchase_cost",
+      {{ field("Purchase Cost (GHS)", "purchase_cost",
                asset.purchase_cost, type="number", placeholder="0.00") }}
       {{ field("Warranty Expiry", "warranty_expiry",
                asset.warranty_expiry.isoformat() if asset.warranty_expiry else '', type="date") }}

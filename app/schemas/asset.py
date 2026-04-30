@@ -13,9 +13,40 @@ class AssetStatus(StrEnum):
 
 
 CATEGORIES = [
-    "Laptop", "Desktop", "Monitor", "Printer", "Phone",
-    "Tablet", "Server", "Networking", "Peripheral", "Other",
+    "Fuel Dispenser",
+    "Underground Storage Tank",
+    "Aboveground Storage Tank",
+    "Generator Set",
+    "Compressor",
+    "LPG Equipment",
+    "Safety & Fire Equipment",
+    "IT & POS Equipment",
+    "Electrical Equipment",
+    "Measurement & Flow Meter",
+    "CCTV & Security",
+    "Civil & Structural",
+    "Vehicle & Tanker",
+    "Office Equipment",
+    "Other",
 ]
+
+CATEGORY_CODES: dict[str, str] = {
+    "Fuel Dispenser": "FD",
+    "Underground Storage Tank": "UST",
+    "Aboveground Storage Tank": "AST",
+    "Generator Set": "GEN",
+    "Compressor": "CMP",
+    "LPG Equipment": "LPG",
+    "Safety & Fire Equipment": "SFE",
+    "IT & POS Equipment": "IT",
+    "Electrical Equipment": "ELE",
+    "Measurement & Flow Meter": "MFM",
+    "CCTV & Security": "SEC",
+    "Civil & Structural": "CIV",
+    "Vehicle & Tanker": "VEH",
+    "Office Equipment": "OFF",
+    "Other": "OTH",
+}
 
 
 class AssetCreate(BaseModel):
@@ -26,7 +57,9 @@ class AssetCreate(BaseModel):
     serial_no: str | None = Field(default=None, max_length=128)
     category: str | None = Field(default=None, max_length=64)
     department: str | None = Field(default=None, max_length=64)
-    location: str | None = Field(default=None, max_length=64)
+    location: str | None = Field(default=None, max_length=128)
+    site_id: int | None = None
+    rfid_tag: str | None = Field(default=None, max_length=64)
     assigned_to: str | None = Field(default=None, max_length=128)
     purchase_date: date | None = None
     purchase_cost: float | None = Field(default=None, ge=0)
@@ -41,7 +74,9 @@ class AssetUpdate(BaseModel):
     serial_no: str | None = Field(default=None, max_length=128)
     category: str | None = Field(default=None, max_length=64)
     department: str | None = Field(default=None, max_length=64)
-    location: str | None = Field(default=None, max_length=64)
+    location: str | None = Field(default=None, max_length=128)
+    site_id: int | None = None
+    rfid_tag: str | None = Field(default=None, max_length=64)
     assigned_to: str | None = Field(default=None, max_length=128)
     purchase_date: date | None = None
     purchase_cost: float | None = Field(default=None, ge=0)
@@ -61,6 +96,10 @@ class AssetRead(BaseModel):
     category: str | None = None
     department: str | None = None
     location: str | None = None
+    site_id: int | None = None
+    rfid_tag: str | None = None
+    rfid_last_seen: datetime | None = None
+    rfid_confirmed_site_id: int | None = None
     assigned_to: str | None = None
     purchase_date: date | None = None
     purchase_cost: float | None = None

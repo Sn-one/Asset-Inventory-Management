@@ -1,12 +1,13 @@
-{% macro field(label, name, value='', type='text', placeholder='', required=false) %}
+{% macro field(label, name, value='', type='text', placeholder='', required=false, readonly=false) %}
 <div>
   <label class="block text-sm font-medium text-gray-700 mb-1">
     {{ label }}{% if required %}<span class="text-red-500 ml-0.5">*</span>{% endif %}
   </label>
-  <input type="{{ type }}" name="{{ name }}" value="{{ value or '' }}"
+  <input type="{{ type }}" name="{{ name }}" id="{{ name }}" value="{{ value or '' }}"
          {% if placeholder %}placeholder="{{ placeholder }}"{% endif %}
          {% if required %}required{% endif %}
-         class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition" />
+         {% if readonly %}readonly class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+         {% else %}class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"{% endif %} />
 </div>
 {% endmacro %}
 
@@ -21,11 +22,30 @@
 {% macro select_field(label, name, options, selected='', placeholder='Select…') %}
 <div>
   <label class="block text-sm font-medium text-gray-700 mb-1">{{ label }}</label>
-  <select name="{{ name }}"
+  <select name="{{ name }}" id="{{ name }}"
           class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white transition">
     <option value="">{{ placeholder }}</option>
     {% for opt in options %}
     <option value="{{ opt }}" {{ 'selected' if opt == selected }}>{{ opt }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endmacro %}
+
+{% macro location_select(label, name, locations, selected_id=None) %}
+<div>
+  <label class="block text-sm font-medium text-gray-700 mb-1">{{ label }}</label>
+  <select name="{{ name }}" id="{{ name }}"
+          class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white transition">
+    <option value="">Select station…</option>
+    {% for loc in locations %}
+    <option value="{{ loc.id }}"
+            data-code="{{ loc.code }}"
+            data-lat="{{ loc.latitude or '' }}"
+            data-lng="{{ loc.longitude or '' }}"
+            {{ 'selected' if loc.id == selected_id }}>
+      {{ loc.name }}{% if loc.address %} — {{ loc.address }}{% endif %}
+    </option>
     {% endfor %}
   </select>
 </div>
