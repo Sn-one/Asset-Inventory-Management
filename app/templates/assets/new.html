@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "assets/_form.html" import field, select_field, textarea_field %}
+{% block title %}New Asset — AssetIMS{% endblock %}
+
+{% block breadcrumb %}
+<a href="/assets" class="text-gray-400 hover:text-gray-600">Assets</a>
+<span class="mx-2 text-gray-300">/</span>
+<span class="font-semibold text-gray-800">New Asset</span>
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="mb-5 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+  <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+  </svg>
+  {{ error }}
+</div>
+{% endif %}
+
+<form method="post" action="/assets" class="max-w-4xl space-y-6">
+
+  <!-- Identification -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Identification</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ field("Asset Tag", "asset_tag", placeholder="e.g. LAP-001", required=true) }}
+      {{ field("Display Name", "name", placeholder="e.g. MacBook Pro 14-inch") }}
+      {{ field("Brand / Manufacturer", "brand", placeholder="e.g. Apple") }}
+      {{ field("Model Number", "model_no", placeholder="e.g. MKGT3LL/A") }}
+      {{ field("Serial Number", "serial_no", placeholder="e.g. C02XG1ABMD6T") }}
+      {{ select_field("Category", "category", categories, placeholder="Select category") }}
+    </div>
+  </div>
+
+  <!-- Location & Assignment -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Location & Assignment</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ field("Location", "location", placeholder="e.g. Head Office, Room 204") }}
+      {{ field("Department", "department", placeholder="e.g. Engineering") }}
+      {{ field("Assigned To", "assigned_to", placeholder="Person's name") }}
+    </div>
+  </div>
+
+  <!-- Purchase & Warranty -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Purchase & Warranty</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {{ field("Purchase Date", "purchase_date", type="date") }}
+      {{ field("Purchase Cost ($)", "purchase_cost", type="number", placeholder="0.00") }}
+      {{ field("Warranty Expiry", "warranty_expiry", type="date") }}
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Notes</h2>
+    {{ textarea_field("Notes", "notes", placeholder="Any additional notes about this asset…") }}
+  </div>
+
+  <!-- Actions -->
+  <div class="flex items-center gap-3">
+    <button type="submit"
+            class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors">
+      Create Asset
+    </button>
+    <a href="/assets" class="px-6 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+      Cancel
+    </a>
+  </div>
+</form>
+{% endblock %}

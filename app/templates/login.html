@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in — AssetIMS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 flex items-center justify-center px-4">
+
+  <div class="w-full max-w-md">
+
+    <!-- Brand -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-indigo-600 mb-4 shadow-lg">
+        <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+        </svg>
+      </div>
+      <h1 class="text-3xl font-bold text-white">AssetIMS</h1>
+      <p class="text-slate-400 mt-1 text-sm">Asset Inventory Management System</p>
+    </div>
+
+    <!-- Card -->
+    <div class="bg-white rounded-2xl shadow-2xl px-8 py-10">
+      <h2 class="text-xl font-semibold text-gray-800 mb-1">Welcome back</h2>
+      <p class="text-gray-500 text-sm mb-6">Sign in to your account to continue</p>
+
+      {% if error %}
+      <div class="mb-5 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+        <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                clip-rule="evenodd"/>
+        </svg>
+        {{ error }}
+      </div>
+      {% endif %}
+
+      <form method="post" action="/login" class="space-y-5">
+        <div>
+          <label for="email" class="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
+          <input id="email" name="email" type="email" required autocomplete="email"
+                 class="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 text-sm
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+                        placeholder:text-gray-400 transition"
+                 placeholder="you@example.com" />
+        </div>
+
+        <div>
+          <label for="password" class="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+          <input id="password" name="password" type="password" required autocomplete="current-password"
+                 class="w-full px-4 py-2.5 rounded-lg border border-gray-300 text-gray-900 text-sm
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent
+                        placeholder:text-gray-400 transition"
+                 placeholder="••••••••" />
+        </div>
+
+        <button type="submit"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 px-4 rounded-lg
+                       text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+          Sign in
+        </button>
+      </form>
+    </div>
+
+    <p class="text-center text-slate-500 text-xs mt-6">
+      &copy; {{ year }} AssetIMS. All rights reserved.
+    </p>
+  </div>
+
+</body>
+</html>

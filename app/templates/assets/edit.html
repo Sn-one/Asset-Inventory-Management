@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "assets/_form.html" import field, select_field, textarea_field %}
+{% block title %}Edit {{ asset.asset_tag }} — AssetIMS{% endblock %}
+
+{% block breadcrumb %}
+<a href="/assets" class="text-gray-400 hover:text-gray-600">Assets</a>
+<span class="mx-2 text-gray-300">/</span>
+<a href="/assets/{{ asset.id }}" class="text-gray-400 hover:text-gray-600">{{ asset.asset_tag }}</a>
+<span class="mx-2 text-gray-300">/</span>
+<span class="font-semibold text-gray-800">Edit</span>
+{% endblock %}
+
+{% block content %}
+
+{% if error %}
+<div class="mb-5 flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
+  {{ error }}
+</div>
+{% endif %}
+
+<form method="post" action="/assets/{{ asset.id }}/update" class="max-w-4xl space-y-6">
+
+  <!-- Non-editable tag badge -->
+  <div class="flex items-center gap-3">
+    <span class="font-mono text-sm font-semibold text-indigo-600 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-lg">
+      {{ asset.asset_tag }}
+    </span>
+    <span class="text-sm text-gray-400">Asset tag cannot be changed after creation</span>
+  </div>
+
+  <!-- Identification -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Identification</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ field("Display Name", "name", asset.name, placeholder="e.g. MacBook Pro 14-inch") }}
+      {{ field("Brand / Manufacturer", "brand", asset.brand, placeholder="e.g. Apple") }}
+      {{ field("Model Number", "model_no", asset.model_no, placeholder="e.g. MKGT3LL/A") }}
+      {{ field("Serial Number", "serial_no", asset.serial_no, placeholder="e.g. C02XG1ABMD6T") }}
+      {{ select_field("Category", "category", categories, asset.category) }}
+    </div>
+  </div>
+
+  <!-- Location & Assignment -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Location & Assignment</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {{ field("Location", "location", asset.location, placeholder="e.g. Head Office, Room 204") }}
+      {{ field("Department", "department", asset.department, placeholder="e.g. Engineering") }}
+      {{ field("Assigned To", "assigned_to", asset.assigned_to, placeholder="Person's name") }}
+    </div>
+  </div>
+
+  <!-- Purchase & Warranty -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Purchase & Warranty</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {{ field("Purchase Date", "purchase_date",
+               asset.purchase_date.isoformat() if asset.purchase_date else '', type="date") }}
+      {{ field("Purchase Cost ($)", "purchase_cost",
+               asset.purchase_cost, type="number", placeholder="0.00") }}
+      {{ field("Warranty Expiry", "warranty_expiry",
+               asset.warranty_expiry.isoformat() if asset.warranty_expiry else '', type="date") }}
+    </div>
+  </div>
+
+  <!-- Notes -->
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <h2 class="text-sm font-semibold text-gray-800 uppercase tracking-wide mb-4">Notes</h2>
+    {{ textarea_field("Notes", "notes", asset.notes, placeholder="Any additional notes…") }}
+  </div>
+
+  <!-- Actions -->
+  <div class="flex items-center gap-3">
+    <button type="submit"
+            class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors">
+      Save Changes
+    </button>
+    <a href="/assets/{{ asset.id }}"
+       class="px-6 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors">
+      Cancel
+    </a>
+  </div>
+</form>
+{% endblock %}
