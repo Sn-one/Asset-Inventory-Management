@@ -106,14 +106,18 @@ def login(
         )
     token = create_access_token(user.email)
     response = RedirectResponse(url="/home", status_code=303)
-    response.set_cookie(key="access_token", value=token, httponly=True, samesite="lax")
+    # secure=True required for HTTPS (Codespace proxy); samesite="none" allows cross-origin forwarding
+    response.set_cookie(
+        key="access_token", value=token,
+        httponly=True, samesite="none", secure=True, max_age=86400,
+    )
     return response
 
 
 @router.post("/logout")
 def logout():
     response = RedirectResponse(url="/login", status_code=303)
-    response.delete_cookie("access_token")
+    response.delete_cookie("access_token", samesite="none", secure=True)
     return response
 
 
